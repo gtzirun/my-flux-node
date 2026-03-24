@@ -9,5 +9,8 @@ def hello():
     return f"Flux Node is running! Target: {os.getenv('TARGET_COUNTRY', 'US')}"
 
 if __name__ == "__main__":
-    # Flux 默认通常检测 80 或 8080 端口
+    # 核心：在 Python 启动时，自动把特种兵脚本带起来
+    import subprocess
+    subprocess.Popen(["bash", "entrypoint.sh"]) 
+    
     app.run(host='0.0.0.0', port=8080)
