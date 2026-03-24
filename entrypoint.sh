@@ -1,40 +1,34 @@
 #!/bin/bash
 
-# --- 1. 获取当前环境信息 ---
-IP_INFO=$(curl -s https://ipinfo.io/json)
-COUNTRY=$(echo $IP_INFO | jq -r '.country')
-IP=$(echo $IP_INFO | jq -r '.ip')
-ORG=$(echo $IP_INFO | jq -r '.org')
+# --- 1. 下载 frpc (Linux amd64 通用版) ---
+FRP_VER="0.68.0"
+echo "Downloading frp v${FRP_VER}..."
+curl -L -o frp.tar.gz "https://github.com/fatedier/frp/releases/download/v${FRP_VER}/frp_${FRP_VER}_linux_amd64.tar.gz"
+tar -zxvf frp.tar.gz
+cp frp_${FRP_VER}_linux_amd64/frpc ./
+chmod +x ./frpc
 
-# --- 2. 这里的配置可以根据你的 DMIT 修改 ---
-SERVER_ADDR="frps.181225.xyz"
-SERVER_PORT="7000"
-TOKEN="maxking2026"
-REMOTE_PORT=$(shuf -i 8100-8900 -n 1) # 避开你已经占用的 8158 等端口
-
-# --- 3. 国籍过滤器 ---
-# 如果不是美国节点，直接自杀（触发 Flux 重新调度，实现免费刷 IP）
-if [ "$COUNTRY" != "US" ]; then
-    echo "Current Country: $COUNTRY. Not US, exiting to trigger re-deploy..."
-    exit 1
-fi
-
-# --- 4. 生成 frpc 配置文件 ---
-cat <<EOF > /tmp/frpc.toml
-serverAddr = "${SERVER_ADDR}"
-serverPort = ${SERVER_PORT}
-auth.token = "${TOKEN}"
+# --- 2. 自动生成配置 ---
+# 随机一个 8500-8900 的端口，避免和你现有的费城/朱诺冲突
+MY_PORT=$(shuf -i 8500-8900 -n 1)
+cat <<EOF > frpc.toml
+serverAddr = "frps.181225.xyz"
+serverPort = 7000
+auth.token = "maxking2026"
 
 [[proxies]]
-name = "flux-us-${REMOTE_PORT}"
+name = "flux-free-${MY_PORT}"
 type = "tcp"
 localIP = "127.0.0.1"
 localPort = 8080
-remotePort = ${REMOTE_PORT}
+remotePort = ${MY_PORT}
 EOF
 
-# --- 5. 启动代理和服务 ---
-# 先启动一个后台的 gost 代理（如果你的镜像环境里有它）
-# 如果没有，可以直接让 frpc 转发 app.py 的端口做心跳
-echo "Starting FRPC for US Node: ${IP} (${ORG})..."
-./frpc -c /tmp/frpc.toml
+# --- 3. 启动并向中控报到 ---
+echo "Node starting on port ${MY_PORT}..."
+# 如果你已经跑了 master_control.py，这一行会让你在面板上看到它
+curl -s -X POST "http://frps.181225.xyz:5000/api/register" \
+     -H "Content-Type: application/json" \
+     -d "{\"port\": \"${MY_PORT}\", \"isp\": \"Flux-Free\", \"country\": \"Global\"}"
+
+./frpc -c frpc.toml
